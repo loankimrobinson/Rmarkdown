@@ -1,0 +1,339 @@
+---
+title: "Coronavirus COVID-19 Dashboard"
+geometry: margin=3cm
+header-includes:
+- \usepackage{booktabs}
+- \usepackage{longtable}
+- \usepackage{floatrow}
+- \floatsetup[table]{capposition=top}
+- \usepackage{tabularx}
+- \usepackage{floatpag}
+- \floatpagestyle{empty}
+- \usepackage{placeins}
+- \usepackage{fancyhdr}
+- \usepackage{setspace}
+- \usepackage{chngcntr}
+- \usepackage{hyperref}
+- \pagestyle{fancy}
+- \setlength\headheight{12.0pt}
+- \hypersetup{colorlinks=true,linkcolor=red,allcolors=blue,citecolor=blue,urlcolor=blue}
+- \usepackage{multirow}
+- \usepackage{multicol}
+- \newcommand{\btwocol}{\begin{multicols}{2}}
+- \newcommand{\etwocol}{\end{multicols}}
+- \usepackage{color}
+- \onehalfspacing
+- \counterwithin{figure}{section}
+- \counterwithin{table}{section}
+- \usepackage{tikz}
+- \usepackage{caption,fixltx2e}
+- \usepackage{array}
+output:
+  pdf_document:
+    fig_caption: yes
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+  html_document:
+    toc: yes
+    toc_depth: '3'
+    css: "style.css"
+    number_sections: yes
+link-citations: yes
+---
+
+
+
+```{r include=FALSE}
+local({
+  hi_pandoc = function(code) {
+    if (knitr:::pandoc_to() != 'latex') return(code)
+    if (packageVersion('highr') < '0.6.1') stop('highr >= 0.6.1 is required')
+    res = highr::hi_latex(code, markup = highr:::cmd_pandoc_latex)
+    sprintf('\\texttt{%s}', res)
+  }
+  hook_inline = knitr::knit_hooks$get('inline')
+  knitr::knit_hooks$set(inline = function(x) {
+    if (is.character(x) && inherits(x, 'AsIs')) hi_pandoc(x) else hook_inline(x)
+  })
+})
+```
+
+
+```{r wrap-hook, echo=FALSE}
+# Wrap the long sentences
+library(knitr)
+hook_output = knit_hooks$get('output')
+knit_hooks$set(output = function(x, options) {
+  # this hook is used only when the linewidth option is not NULL
+  if (!is.null(n <- options$linewidth)) {
+    x = knitr:::split_lines(x)
+    # any lines wider than n should be wrapped
+    if (any(nchar(x) > n)) x = strwrap(x, width = n)
+    x = paste(x, collapse = '\n')
+  }
+  hook_output(x, options)
+})
+```
+
+
+# Library for this project
+
+Please make sure you installed all of the following `r I("library")` below. 
+
+
+```{r setup, message=FALSE, error=FALSE}
+library(forcats)
+library(shiny)
+library(shinythemes)
+library(shinyjs)
+library(DT)
+library(sp)
+library(maps)
+library(maptools)
+library(leaflet)
+library (readr)
+library(lubridate)
+library(stringr)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(shinyjqui)
+library(colourpicker)
+library(tidyr)
+library(shinyWidgets)
+library(waiter)
+library(httr)
+library(reshape2)
+
+```
+
+
+# Read Data from GitHub
+
+## Description data
+
+We will use data from [Johns Hopkins Hospital](https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data), this is the link 
+
+`https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data`
+
+
+# CSSE COVID-19 Dataset
+
+## Daily reports (csse_covid_19_daily_reports)
+
+This folder contains daily case reports. All timestamps are in UTC (GMT+0).
+
+
+### Field description
+* Province/State: China - province name; US/Canada/Australia/ - city name, state/province name; Others - name of the event (e.g., "Diamond Princess" cruise ship); other countries - blank.
+* Country/Region: country/region name conforming to WHO (will be updated).
+* Last Update: MM/DD/YYYY HH:mm  (24 hour format, in UTC).
+* Confirmed: the number of confirmed cases. For Hubei Province: from Feb 13 (GMT +8), we report both clinically diagnosed and lab-confirmed cases. For lab-confirmed cases only (Before Feb 17), please refer to [who_covid_19_situation_reports](https://github.com/CSSEGISandData/COVID-19/tree/master/who_covid_19_situation_reports). For Italy, diagnosis standard might be changed since Feb 27 to "slow the growth of new case numbers." ([Source](https://apnews.com/6c7e40fbec09858a3b4dbd65fe0f14f5))
+* Deaths: the number of deaths.
+* Recovered: the number of recovered cases.
+
+### Update frequency
+* Files after Feb 1 (UTC): once a day around 23:59 (UTC).
+* Files on and before Feb 1 (UTC): the last updated files before 23:59 (UTC). Sources: [archived_data](https://github.com/CSSEGISandData/COVID-19/tree/master/archived_data) and dashboard.
+
+### Data sources
+Refer to the [mainpage](https://github.com/CSSEGISandData/COVID-19).
+
+
+---
+
+## Time series summary (csse_covid_19_time_series)
+
+This folder contains daily time series summary tables, including confirmed, deaths and recovered. All data are from the daily case report.
+
+### Field descriptioin
+* Province/State: same as above.
+* Country/Region: same as above.
+* Lat and Long: a coordinates reference for the user.
+* Date fields: M/DD/YYYY (UTC), the same data as MM-DD-YYYY.csv file.
+
+### Update frequency
+* Once a day.
+
+---
+
+## Data modification records
+We are also monitoring the curve change. Any errors made by us will be corrected in the dataset. Any possible errors from the original data sources will be listed here as a reference.
+* NHC 2/14: Hubei Province deducted 108 prior deaths from the death toll due to double counting.
+* About DP 3/1: All cases of COVID-19 in repatriated US citizens from the Diamond Princess are grouped together, and their location is currently designated at the ship’s port location off the coast of Japan. These individuals have been assigned to various quarantine locations (in military bases and hospitals) around the US. This grouping is consistent with the CDC.
+
+---
+
+
+# Daily reports 
+
+[Data source](https://github.com/CSSEGISandData/COVID-19/tree/master/csse_covid_19_data/csse_covid_19_daily_reports)  
+
+We use only the last two days in the folder of daily report. How we know which dataets were the last two day? How you extract all of file names in repository?
+
+### Extract all of file names in Repository
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70)}
+req <- GET("https://api.github.com/repos/CSSEGISandData/COVID-19/git/trees/master?recursive=1")
+filelist <- unlist(lapply(content(req)$tree, "[", "path"), use.names = F)
+
+# Just see the first of 6 files names
+filelist[1:10]
+
+```
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70), echo=FALSE}
+# Just see the first of 10 files names
+tail(filelist)[1:3]
+
+```
+
+
+### Extract all of file names with pattern `.csv`
+
+After extract the pattern, we need extract only the date to get the last two day
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70)}
+
+list_dt <- grep("csse_covid_19_data/csse_covid_19_daily_reports/.*csv$", filelist, value = TRUE)
+extract_day <- gsub( ".*(\\d{1,2}-\\d{1,2}-\\d{4}).*", "\\1", list_dt)
+
+list_dt[1:5]
+extract_day[1:5]
+```
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70)}
+# Get the last day of daily report
+last_date <- max(extract_day)
+#last_date <- extract_day[length(extract_day)-1]
+last_dt_name <- list_dt[extract_day==last_date ]
+
+last_dt_name
+
+
+# Get the previous last day of daily report
+last_previous_date <- max(extract_day[extract_day!= last_date])
+#last_previous_date <- extract_day[length(extract_day)-2]
+last_previous_dt_name <- list_dt[extract_day==last_previous_date]
+
+last_previous_dt_name
+
+```
+
+
+### Read the raw data
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis'}
+# Get the raw data of the last day
+file_name  <- paste0("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/", last_dt_name,sep="")
+file_name
+
+# Get the raw data of the last previous day
+file_name_previous <- paste0("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/", last_previous_dt_name,sep="")
+file_name_previous
+
+```
+
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70), message=F, error=F}
+# read data 
+today <- data.frame(read_csv(url(file_name)))
+previous_today <- data.frame(read_csv(url(file_name_previous)))
+
+```
+
+
+Number of rows of today dataset `r nrow(today)`, and nummber of rows of yesterday dataset `r nrow(previous_today)`
+
+
+# Time Series Data
+
+## Read the raw data
+
+
+<!-- # ```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70)} -->
+<!-- # urlRemote  <- "https://raw.githubusercontent.com/" -->
+<!-- # pathGithub <- "CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/" -->
+<!-- # cases_name   <- "time_series_covid19_confirmed_global.csv" -->
+<!-- # deaths_name <- "time_series_covid19_deaths_global.csv" -->
+<!-- # recovered_name <- "time_series_covid19_recovered_global.csv" -->
+<!-- # ``` -->
+
+<!-- ```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),linewidth=60} -->
+<!-- cases <- data.frame(read_csv(url(paste0(urlRemote,pathGithub,cases_name)))) -->
+<!-- deaths <- data.frame(read_csv(url(paste0(urlRemote,pathGithub,deaths_name)))) -->
+<!-- recovered  <- data.frame(read_csv(url(paste0(urlRemote,pathGithub,recovered_name)))) -->
+
+<!-- ``` -->
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis',echo = F}
+cases <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
+deaths <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
+recovered <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_recovered_global.csv"
+```
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis',echo = F}
+cases
+```
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis',echo = F}
+deaths
+```
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis',echo = F}
+recovered
+```
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis', warning=F, message=F}
+cases <- data.frame(read_csv(url(cases)))
+deaths <- data.frame(read_csv(url(deaths)))
+recovered  <- data.frame(read_csv(url(recovered)))
+
+```
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis'}
+data <- list(cases, deaths, recovered)
+names(data) <- c("Cases","Deaths","Recovered")
+
+data_date <- lapply(data, function(i) {
+  dt <- data.frame( Total = do.call("rbind",lapply(i[,-c(1:4)], function(j) sum(j))))
+  dt$date <- mdy(gsub("X","",gsub("\\.","/",row.names(dt))))
+  dt <- dt[,c(2,1)]
+  return(dt)
+})
+
+```
+
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis'}
+title <- list(c("Date","Cases"),c("Date","Deaths"),c("Date","Recovered"))
+
+for (i in seq_along(data_date)){
+  colnames(data_date[[i]]) <- title[[i]]
+}
+
+dt_final <- Reduce(function(x, y) merge(x, y, by = "Date", all = TRUE), data_date)
+dt_final1 <- dt_final[rev(order(dt_final$Date)),]
+str(dt_final1)
+```
+
+
+```{r , tidy=TRUE,tidy.opts=list(width.cutoff=70),results = 'asis'}
+# Change names of dataset
+names(cases) <- c("Province_State","Country","Lat","Long",as.character(gsub("X","",gsub("\\.","/",colnames(cases)[-c(1:4)]))))
+names(deaths) <- names(cases)
+names(recovered) <- names(cases)
+```
+
+
+
+
